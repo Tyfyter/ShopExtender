@@ -29,10 +29,6 @@ namespace ShopExtender {
 				method,
 				NPCShop_FillShop
 			);
-			/*MonoModHooks.Add(
-				method,
-				(hook_Detour_NPCShop_FillShop)Detour_NPCShop_FillShop
-			);*/
 			On_Chest.SetupShop_string_NPC += On_Chest_SetupShop_string_NPC;
 		}
 		string shopName;
@@ -118,7 +114,7 @@ namespace ShopExtender {
 				Main.spriteBatch.Draw(TextureAssets.CraftUpButton.Value, scrollUpButton, color);
 			}
 			Rectangle scrollDownButton = new Rectangle(496, Main.instance.invBottom + 128 + 20, 16, 16);
-			if (ShopExtender.page < ShopExtender.pageCount) {
+			if (ShopExtender.page <= ShopExtender.pageCount) {
 				Color color = Color.White * 0.8f;
 				if (scrollDownButton.Contains(Main.MouseScreen.ToPoint())) {
 					Main.LocalPlayer.mouseInterface = true;
@@ -147,11 +143,11 @@ namespace ShopExtender {
 	}
 	/*public class test : GlobalNPC {
 		public override void ModifyShop(NPCShop shop) {
-			for (int i = 0; i < 36; i++) {
+			for (int i = 0; i < 34; i++) {
 				shop.Add(i + 1);
 			}
 			for (int i = 0; i < 39; i++) {
-				shop.Add(i + 36, new Condition("", () => Main.LocalPlayer.HeldItem.type != ItemID.AbigailsFlower));
+				shop.Add(i + 35, new Condition("", () => Main.LocalPlayer.HeldItem.type != ItemID.AbigailsFlower));
 			}
 		}
 	}*/
