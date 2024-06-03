@@ -11,6 +11,7 @@ using System.Reflection;
 using Terraria.UI;
 using Microsoft.Xna.Framework;
 using Terraria.GameContent;
+using Terraria.ModLoader.Default;
 
 namespace ShopExtender {
 	public class ShopExtender : Mod {
@@ -20,16 +21,99 @@ namespace ShopExtender {
 		public static bool scrolling = false;
 		public static ShopExtender Instance => ContentInstance<ShopExtender>.Instance;
 		public override void Load() {
-			MethodInfo[] methods = typeof(NPCShop).GetMethods();
 			MethodInfo method = typeof(NPCShop).GetMethod(
 				nameof(NPCShop.FillShop),
-				new Type[] { typeof(Item[]), typeof(NPC), typeof(bool).MakeByRefType() }
+				[typeof(Item[]), typeof(NPC), typeof(bool).MakeByRefType()]
 			);
 			MonoModHooks.Modify(
 				method,
 				NPCShop_FillShop
 			);
 			On_Chest.SetupShop_string_NPC += On_Chest_SetupShop_string_NPC;
+			method = typeof(PylonShopNPC).GetMethod(
+				"AddPylonsToBartenderShop",
+				BindingFlags.NonPublic | BindingFlags.Instance,
+				[typeof(NPC), typeof(Item[])]
+			);
+			//_pylonEntries = (EntryList)typeof(PylonShopNPC).GetField(nameof(_pylonEntries), BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
+			MonoModHooks.Modify(
+				method,
+				IL_AddPylonsToBartenderShop
+			);
+		}
+		static void IL_AddPylonsToBartenderShop(ILContext il) {
+			ILCursor c = new(il);
+			c.GotoNext(MoveType.Before, i => i.MatchLdsfld<PylonShopNPC>("_pylonEntries"));
+			ILLabel breakout = c.MarkLabel();
+			ILLabel loop = c.DefineLabel();
+			ILLabel normal = c.DefineLabel();
+
+			c.Index = 0;
+			c.EmitLdsfld(typeof(ShopExtender).GetField(nameof(page)));
+			c.EmitLdcI4(0);
+			c.EmitBeq(normal);
+
+			c.EmitLdcI4(0);//slot = 0;
+			c.EmitStloc0();
+			c.MarkLabel(loop);//loop:
+
+			c.EmitLdarg2();//if (items[slot] is null) goto breakout;
+			c.EmitLdloc0();
+			c.EmitLdelemRef();
+			c.EmitBrfalse(breakout);
+
+			c.EmitLdarg2();//if (items[slot].IsAir) goto breakout;
+			c.EmitLdloc0();
+			c.EmitLdelemRef();
+			c.EmitCall(typeof(Item).GetProperty(nameof(Item.IsAir)).GetGetMethod());
+			c.EmitBrtrue(breakout);
+
+			c.EmitLdloc0();//slot++;
+			c.EmitLdcI4(1);
+			c.EmitAdd();
+			c.EmitStloc0();
+
+			c.EmitLdloc0();//if (slot <= 30) goto loop;
+			c.EmitLdcI4(30);
+			c.EmitBle(loop);
+
+			c.EmitRet();
+			c.MarkLabel(normal);
+
+			ILLabel breakWhile = c.DefineLabel();
+			c.GotoNext(MoveType.After,
+				 i => i.MatchLdarg2(),
+				 i => i.MatchLdloc0(),
+				 i => i.MatchLdelemRef(),
+				 i => i.MatchCallOrCallvirt<Item>("get_" + nameof(Item.IsAir)),
+				 i => i.MatchBrfalse(out _)
+			);
+			c.MarkLabel(breakWhile);
+			c.Index -= 2;
+			c.EmitBrfalse(breakWhile);
+			c.EmitLdarg2();
+			c.EmitLdloc0();
+			c.EmitLdelemRef();
+		}
+		private static EntryList _pylonEntries;
+		private static void AddPylonsToBartenderShop(Action<PylonShopNPC, NPC, Item[]> orig, PylonShopNPC pylonShopNPC, NPC npc, Item[] items) {
+			int slot = 0;
+			for (; slot <= 30; slot++) {
+				if (items[slot]?.IsAir ?? true) break;
+			}
+			foreach (NPCShop.Entry entry in _pylonEntries) {
+				if (entry.Disabled || !entry.ConditionsMet()) {
+					continue;
+				}
+				items[slot] = entry.Item.Clone();
+				entry.OnShopOpen(items[slot], npc);
+				do {
+					if (++slot >= items.Length) {
+						return;
+					}
+				}
+				while (!items[slot].IsAir);
+			}
 		}
 		string shopName;
 		public void RefreshShop() {
@@ -63,7 +147,7 @@ namespace ShopExtender {
 				int i;
 				for (i = 0; i < limit * page; i++) {
 					if (!e.MoveNext()) return e;
-					if (!e.Current.ConditionsMet()) i--;
+					if (e.Current is null || !e.Current.ConditionsMet()) i--;
 				}
 				return e;
 			});
@@ -83,7 +167,7 @@ namespace ShopExtender {
 			c.Emit(OpCodes.Brfalse, breakLabel);
 			c.Index++;
 			c.MarkLabel(breakLabel);
-			c.EmitDelegate<Action>(() => {
+			c.EmitDelegate(() => {
 				countingPages = true;
 				pageCount++;
 			});
